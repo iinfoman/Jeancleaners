@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jeanwyne Cleaning — Admin Dashboard</title>
+<meta name="robots" content="noindex, nofollow">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --sage-dark: #4a7a5a; --sage-light: #b8d4bf; --gold: #c9a84c;
+    --cream: #faf7f2; --charcoal: #2a2a2a;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family:'DM Sans', sans-serif; background:var(--cream); color:var(--charcoal);
+    min-height:100vh;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 24px 18px 60px; }
+  h1 { font-family:'Playfair Display', serif; font-size:1.6rem; color:var(--sage-dark); margin-bottom:4px; }
+  .sub { color:#777; font-size:0.85rem; margin-bottom: 26px; }
+
+  /* setup notice */
+  .setup-notice {
+    background: white; border: 1px solid var(--sage-light); border-radius: 16px;
+    padding: 20px; margin-bottom: 20px; font-size: 0.85rem; line-height:1.6; color:#555;
+  }
+  .setup-notice code { background:#f0ece0; padding:2px 6px; border-radius:4px; font-size:0.8rem; }
+
+  /* login */
+  .login-card {
+    background:white; border-radius:20px; padding:28px 24px; max-width:380px; margin:60px auto;
+    box-shadow:0 10px 40px rgba(0,0,0,0.08);
+  }
+  .login-card h2 { font-family:'Playfair Display',serif; color:var(--sage-dark); margin-bottom:18px; text-align:center; }
+  .field { margin-bottom: 14px; }
+  .field label { display:block; font-size:0.78rem; font-weight:600; margin-bottom:5px; color:#555; }
+  .field input, .field select, .field textarea {
+    width:100%; padding:11px 13px; border:1px solid #ddd; border-radius:10px;
+    font-family:inherit; font-size:0.9rem; background:#fafafa;
+  }
+  .field textarea { resize:vertical; min-height:70px; }
+  .btn {
+    display:inline-block; background:var(--sage-dark); color:white; border:none;
+    padding:12px 22px; border-radius:50px; font-weight:600; font-size:0.88rem;
+    cursor:pointer; transition:background 0.2s;
+  }
+  .btn:hover { background:var(--charcoal); }
+  .btn-block { width:100%; text-align:center; }
+  .btn-danger { background:#c0392b; }
+  .btn-small { padding:7px 14px; font-size:0.78rem; }
+  .error-msg { color:#c0392b; font-size:0.82rem; margin-top:8px; display:none; }
+
+  /* dashboard */
+  #dashboard { display:none; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; }
+  .logout-link { font-size:0.8rem; color:#888; text-decoration:underline; cursor:pointer; background:none; border:none; }
+
+  .card {
+    background:white; border-radius:18px; padding:20px 20px; margin-bottom:20px;
+    box-shadow:0 4px 20px rgba(0,0,0,0.05);
+  }
+  .card h3 { font-family:'Playfair Display',serif; font-size:1.05rem; color:var(--sage-dark); margin-bottom:14px; }
+
+  .toggle-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .toggle-row label { font-size:0.85rem; font-weight:600; }
+  .switch { position:relative; width:46px; height:26px; flex-shrink:0; }
+  .switch input { opacity:0; width:0; height:0; }
+  .slider { position:absolute; inset:0; background:#ccc; border-radius:26px; cursor:pointer; transition:0.2s; }
+  .slider::before { content:''; position:absolute; width:20px; height:20px; left:3px; top:3px; background:white; border-radius:50%; transition:0.2s; }
+  .switch input:checked + .slider { background:var(--sage-dark); }
+  .switch input:checked + .slider::before { transform:translateX(20px); }
+
+  .stats-row { display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+  .stat-pill { background:white; border-radius:14px; padding:14px 18px; flex:1; min-width:110px; text-align:center; box-shadow:0 4px 16px rgba(0,0,0,0.05); }
+  .stat-pill .n { font-family:'Playfair Display',serif; font-weight:900; font-size:1.5rem; color:var(--sage-dark); }
+  .stat-pill .l { font-size:0.72rem; color:#888; }
+
+  .booking-card {
+    background:white; border-radius:16px; padding:16px 18px; margin-bottom:14px;
+    box-shadow:0 4px 16px rgba(0,0,0,0.05); border-left:4px solid var(--sage-light);
+  }
+  .booking-card.status-new { border-left-color: var(--gold); }
+  .booking-card.status-confirmed { border-left-color: var(--sage-dark); }
+  .booking-card.status-completed { border-left-color: #999; opacity:0.75; }
+  .booking-card.status-cancelled { border-left-color: #c0392b; opacity:0.6; }
+  .b-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px; }
+  .b-name { font-weight:700; font-size:1rem; }
+  .b-when { font-size:0.78rem; color:#888; }
+  .b-detail { font-size:0.85rem; color:#555; margin-bottom:3px; }
+  .b-detail b { color:var(--charcoal); }
+  .b-actions { display:flex; gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap; }
+  .status-select {
+    padding:7px 10px; border-radius:8px; border:1px solid #ddd; font-size:0.8rem; font-family:inherit;
+  }
+  .empty-state { text-align:center; padding:40px 20px; color:#999; font-size:0.9rem; }
+  .loading { text-align:center; padding:30px; color:#999; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Jeanwyne Cleaning</h1>
+  <div class="sub">Admin Dashboard</div>
+
+  <div id="setupNotice" class="setup-notice" style="display:none;">
+    <strong>Dashboard not connected yet.</strong><br>
+    Paste your Supabase project URL and anon key into the <code>SUPABASE_URL</code> /
+    <code>SUPABASE_ANON_KEY</code> spots near the top of this file's script
+    (same as in <code>index.html</code>). See <code>setup.sql</code> for the full setup steps.
+  </div>
+
+  <div id="loginScreen" class="login-card" style="display:none;">
+    <h2>Log In</h2>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="loginEmail" placeholder="you@example.com">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="loginPassword" placeholder="••••••••">
+    </div>
+    <button class="btn btn-block" onclick="doLogin()">Log In</button>
+    <div class="error-msg" id="loginError">Incorrect email or password.</div>
+  </div>
+
+  <div id="dashboard">
+    <div class="topbar">
+      <div class="sub" style="margin:0;">Bookings &amp; announcement control</div>
+      <button class="logout-link" onclick="doLogout()">Log out</button>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-pill"><div class="n" id="statNew">0</div><div class="l">New</div></div>
+      <div class="stat-pill"><div class="n" id="statConfirmed">0</div><div class="l">Confirmed</div></div>
+      <div class="stat-pill"><div class="n" id="statTotal">0</div><div class="l">Total</div></div>
+    </div>
+
+    <div class="card">
+      <h3>📢 Announcement Banner</h3>
+      <div class="toggle-row">
+        <label class="switch">
+          <input type="checkbox" id="annActive">
+          <span class="slider"></span>
+        </label>
+        <label>Show banner on website</label>
+      </div>
+      <div class="field">
+        <label>Type</label>
+        <select id="annType">
+          <option value="promo">🎉 Promo</option>
+          <option value="info">📢 Info</option>
+          <option value="alert">⚠️ Alert</option>
+          <option value="holiday">🌴 Holiday</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Message</label>
+        <textarea id="annText" placeholder="e.g. Book 3 cleans this month and get your 4th at 50% off!"></textarea>
+      </div>
+      <button class="btn" onclick="saveAnnouncement()">Save Announcement</button>
+      <span id="annSaved" style="margin-left:10px; font-size:0.8rem; color:var(--sage-dark); display:none;">✓ Saved</span>
+    </div>
+
+    <div class="card">
+      <h3>📋 Bookings</h3>
+      <div id="bookingsList"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* ══════════════════════════════════════════════════════════
+     Paste the SAME values you used in index.html here.
+     ══════════════════════════════════════════════════════════ */
+  const SUPABASE_URL = "";
+  const SUPABASE_ANON_KEY = "";
+
+  let sb = null;
+
+  function init() {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      document.getElementById('setupNotice').style.display = 'block';
+      return;
+    }
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    sb.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        showDashboard();
+      } else {
+        document.getElementById('loginScreen').style.display = 'block';
+      }
+    });
+  }
+
+  async function doLogin() {
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const errEl = document.getElementById('loginError');
+    errEl.style.display = 'none';
+
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) {
+      errEl.textContent = error.message;
+      errEl.style.display = 'block';
+      return;
+    }
+    showDashboard();
+  }
+
+  async function doLogout() {
+    await sb.auth.signOut();
+    location.reload();
+  }
+
+  function showDashboard() {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    loadAnnouncement();
+    loadBookings();
+  }
+
+  async function loadAnnouncement() {
+    const { data } = await sb.from('settings').select('value').eq('key', 'announcement').single();
+    if (data && data.value) {
+      document.getElementById('annActive').checked = !!data.value.active;
+      document.getElementById('annType').value = data.value.type || 'promo';
+      document.getElementById('annText').value = data.value.text || '';
+    }
+  }
+
+  async function saveAnnouncement() {
+    const value = {
+      active: document.getElementById('annActive').checked,
+      type: document.getElementById('annType').value,
+      text: document.getElementById('annText').value.trim()
+    };
+    await sb.from('settings').upsert({ key: 'announcement', value });
+    const saved = document.getElementById('annSaved');
+    saved.style.display = 'inline';
+    setTimeout(() => saved.style.display = 'none', 2000);
+  }
+
+  async function loadBookings() {
+    const { data, error } = await sb.from('bookings').select('*').order('created_at', { ascending: false });
+    const listEl = document.getElementById('bookingsList');
+
+    if (error) {
+      listEl.innerHTML = `<div class="empty-state">Couldn't load bookings: ${error.message}</div>`;
+      return;
+    }
+    if (!data || data.length === 0) {
+      listEl.innerHTML = `<div class="empty-state">No bookings yet — they'll show up here as soon as someone books on the website.</div>`;
+      updateStats([]);
+      return;
+    }
+
+    updateStats(data);
+    listEl.innerHTML = data.map(b => bookingCardHtml(b)).join('');
+  }
+
+  function updateStats(bookings) {
+    document.getElementById('statNew').textContent = bookings.filter(b => b.status === 'new').length;
+    document.getElementById('statConfirmed').textContent = bookings.filter(b => b.status === 'confirmed').length;
+    document.getElementById('statTotal').textContent = bookings.length;
+  }
+
+  function bookingCardHtml(b) {
+    const when = new Date(b.created_at).toLocaleDateString('en-ZA', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+    const waLink = `https://wa.me/27${b.phone.replace(/\D/g,'').replace(/^0/,'')}`;
+    return `
+      <div class="booking-card status-${b.status}" data-id="${b.id}">
+        <div class="b-top">
+          <div class="b-name">${escapeHtml(b.name)}</div>
+          <div class="b-when">${when}</div>
+        </div>
+        <div class="b-detail"><b>Service:</b> ${escapeHtml(b.service)} ${b.frequency ? '(' + escapeHtml(b.frequency) + ')' : ''}</div>
+        <div class="b-detail"><b>Area:</b> ${escapeHtml(b.area)}</div>
+        <div class="b-detail"><b>Date/Time:</b> ${escapeHtml(b.clean_date || '')} ${escapeHtml(b.clean_time || '')}</div>
+        <div class="b-detail"><b>Phone:</b> <a href="${waLink}" target="_blank">${escapeHtml(b.phone)}</a></div>
+        ${b.notes ? `<div class="b-detail"><b>Notes:</b> ${escapeHtml(b.notes)}</div>` : ''}
+        <div class="b-actions">
+          <select class="status-select" onchange="updateStatus('${b.id}', this.value)">
+            <option value="new" ${b.status==='new'?'selected':''}>New</option>
+            <option value="confirmed" ${b.status==='confirmed'?'selected':''}>Confirmed</option>
+            <option value="completed" ${b.status==='completed'?'selected':''}>Completed</option>
+            <option value="cancelled" ${b.status==='cancelled'?'selected':''}>Cancelled</option>
+          </select>
+          <button class="btn btn-small btn-danger" onclick="deleteBooking('${b.id}')">Delete</button>
+        </div>
+      </div>`;
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  async function updateStatus(id, status) {
+    await sb.from('bookings').update({ status }).eq('id', id);
+    loadBookings();
+  }
+
+  async function deleteBooking(id) {
+    if (!confirm('Delete this booking? This cannot be undone.')) return;
+    await sb.from('bookings').delete().eq('id', id);
+    loadBookings();
+  }
+
+  init();
+</script>
+</body>
+</html>
