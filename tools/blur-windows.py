@@ -1,4 +1,8 @@
-"""Not part of the website - kept so the blur can be reproduced or adjusted.
+"""Not part of the website - and NOT currently applied.
+
+The published clips are unblurred by owner's decision. This is kept because it
+holds the hand-mapped record of where every window appears in both clips, so the
+blur can be put back without redoing that work.
 
 Usage:  python3 tools/blur-windows.py <source.mp4> <output.mp4|.webm> day|night
 
