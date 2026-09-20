@@ -1,6 +1,11 @@
 """Not part of the website - kept so the blur can be reproduced or adjusted.
 
-Usage:  python3 tools/blur-windows.py <source.mp4> <output.mp4> day|night
+Usage:  python3 tools/blur-windows.py <source.mp4> <output.mp4|.webm> day|night
+
+Output size, frame rate and codec come from the constants below. The frame rate
+matches the source footage (~14.8fps) - encoding higher just invents duplicate
+frames and inflates the file. Masks are in percentages, so they follow the
+output size automatically.
 
 Blur the exterior views (windows, glass doors, balcony) in the walk-through clips.
 
@@ -11,8 +16,9 @@ generously, then feathered, so a slightly-off rect still covers the glass.
 """
 import subprocess, sys, numpy as np, cv2
 
-W, H, FPS = 576, 1024, 20
-FEATHER = 22          # px, softens the rect edge
+SRC_W, SRC_H = 576, 1024      # what the phone recorded
+W, H, FPS = 480, 854, 15      # what gets published
+FEATHER = round(22 * W / SRC_W)   # px, softens the rect edge
 # Keyframes below were read off 1-frame-per-second contact sheets. On these VFR
 # clips ffmpeg's fps=1 filter lands 0.45s later than the wall clock, so shift the
 # lookup by that much rather than re-reading every rect.
@@ -86,7 +92,7 @@ def mask_at(tracks, t):
 
 
 def obscure(frame):
-    small = cv2.resize(frame, (W // 24, H // 24), interpolation=cv2.INTER_AREA)
+    small = cv2.resize(frame, (max(1, W // 24), max(1, H // 24)), interpolation=cv2.INTER_AREA)
     big = cv2.resize(small, (W, H), interpolation=cv2.INTER_LINEAR)
     return cv2.GaussianBlur(big, (0, 0), 10)
 
@@ -96,7 +102,8 @@ def frames(path):
     # decode through fps=FPS to force constant rate -- otherwise frame index does
     # not map to wall-clock time and every mask lands in the wrong place.
     p = subprocess.Popen(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-i', path,
-                          '-vf', f'fps={FPS}', '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-'],
+                          '-vf', f'fps={FPS},scale={W}:{H}',
+                          '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-'],
                          stdout=subprocess.PIPE)
     n = W * H * 3
     while True:
@@ -118,14 +125,20 @@ def render(frame, tracks, t):
 if __name__ == '__main__':
     src, dst, kind = sys.argv[1], sys.argv[2], sys.argv[3]
     tracks = TRACKS[kind]
+    if dst.endswith('.webm'):        # smaller, for browsers that take VP9
+        # pix_fmt is not optional here: fed raw BGR frames, ffmpeg otherwise
+        # picks 4:4:4 chroma for VP9 and the file comes out ~3x larger.
+        codec = ['-c:v', 'libvpx-vp9', '-crf', '36', '-b:v', '0', '-row-mt', '1',
+                 '-speed', '2', '-pix_fmt', 'yuv420p',
+                 '-c:a', 'libopus', '-b:a', '48k', '-ac', '1']
+    else:                            # H.264 fallback, plays everywhere
+        codec = ['-c:v', 'libx264', '-profile:v', 'high', '-level', '4.0', '-crf', '33',
+                 '-preset', 'slow', '-pix_fmt', 'yuv420p',
+                 '-c:a', 'aac', '-b:a', '64k', '-ac', '1', '-movflags', '+faststart']
     enc = subprocess.Popen(
         ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
          '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-s', f'{W}x{H}', '-r', str(FPS), '-i', '-',
-         '-i', src, '-map', '0:v', '-map', '1:a',
-         '-c:v', 'libx264', '-profile:v', 'high', '-level', '4.0', '-crf', '31',
-         '-preset', 'slow', '-pix_fmt', 'yuv420p',
-         '-c:a', 'aac', '-b:a', '64k', '-ac', '1',
-         '-movflags', '+faststart', dst], stdin=subprocess.PIPE)
+         '-i', src, '-map', '0:v', '-map', '1:a'] + codec + [dst], stdin=subprocess.PIPE)
     for i, f in enumerate(frames(src)):
         enc.stdin.write(render(f, tracks, i / FPS - ANNOT_OFFSET).tobytes())
     enc.stdin.close(); enc.wait()

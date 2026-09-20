@@ -518,6 +518,18 @@
   .work-cap {
     font-size: 0.83rem; color: #5e5e5e; line-height: 1.6; margin-top: 13px;
   }
+  .work-loading {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%,-50%);
+    background: rgba(250,247,242,0.94); color: var(--sage-dark);
+    font-size: 0.78rem; font-weight: 600;
+    padding: 9px 16px; border-radius: 50px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.22);
+    animation: workPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes workPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+  @media (prefers-reduced-motion: reduce) { .work-loading { animation: none; } }
+
   .work-note {
     font-size: 0.8rem; color: #6b6b6b; line-height: 1.6;
     margin-top: 26px; max-width: 520px;
@@ -943,6 +955,8 @@
 </section>
 
 <!-- RECENT WORK — video walk-throughs of finished jobs.
+     Clips are built by tools/blur-windows.py, which sets the size, frame rate
+     and compression as well as blurring the windows.
      To add a clip: put the .mp4 and its poster images in media/, then copy one
      <figure class="work-item"> block below and change the file names, the
      duration, the alt text and the caption. Nothing else needs to change. -->
@@ -1464,9 +1478,30 @@
         video.preload = 'auto';
         video.setAttribute('controlsList', 'nodownload');
 
+        // On a slow connection there is a wait before the first frame. Say so,
+        // otherwise a tap looks like it did nothing.
+        const loading = document.createElement('div');
+        loading.className = 'work-loading';
+        loading.setAttribute('role', 'status');
+        loading.textContent = 'Loading…';
+
         stage.replaceChild(video, btn);
+        stage.appendChild(loading);
+
+        // A failed load also rejects play(), so guard the message from being
+        // cleared by its own failure -- otherwise a dropped connection leaves
+        // the viewer staring at nothing.
+        let failed = false;
+        const clearLoading = () => { if (!failed) loading.remove(); };
+        video.addEventListener('playing', clearLoading, { once: true });
+        video.addEventListener('canplay', clearLoading, { once: true });
+        video.addEventListener('error', () => {
+          failed = true;
+          loading.textContent = 'Sorry — this clip could not load.';
+        });
+
         video.focus();
-        video.play().catch(() => { /* blocked autoplay — the controls are right there */ });
+        video.play().catch(clearLoading);   // blocked autoplay — controls are right there
       });
     });
   })();
