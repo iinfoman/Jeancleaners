@@ -1459,6 +1459,28 @@
      site stays light for anyone on mobile data.
      ══════════════════════════════════════════════════════════ */
   (function initWorkClips() {
+    const players = [];
+
+    function pauseAll(except) {
+      players.forEach(v => { if (v !== except && !v.paused) v.pause(); });
+    }
+
+    // Pause a clip once it is mostly scrolled past. Nobody wants audio
+    // following them down the page, and it stops spending data on something
+    // the viewer has already left behind.
+    const watcher = ('IntersectionObserver' in window)
+      ? new IntersectionObserver(entries => {
+          entries.forEach(e => {
+            if (e.intersectionRatio < 0.25 && !e.target.paused) e.target.pause();
+          });
+        }, { threshold: [0, 0.25] })
+      : null;
+
+    // Same again for switching tab or app, or locking the phone.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) pauseAll(null);
+    });
+
     document.querySelectorAll('.work-frame').forEach(btn => {
       btn.addEventListener('click', () => {
         const src = btn.getAttribute('data-video');
@@ -1487,15 +1509,31 @@
         // the viewer staring at nothing.
         let failed = false;
         const clearLoading = () => { if (!failed) loading.remove(); };
-        video.addEventListener('playing', clearLoading, { once: true });
-        video.addEventListener('canplay', clearLoading, { once: true });
         video.addEventListener('error', () => {
           failed = true;
           loading.textContent = 'Sorry — this clip could not load.';
         });
 
+        // Wait for the browser to say it can play the whole way through before
+        // starting, rather than starting on the first frame and stalling a few
+        // seconds later. Better a slightly longer wait than a clip that freezes.
+        const start = () => video.play().catch(clearLoading);
+        video.addEventListener('canplaythrough', start, { once: true });
+
+        // Some browsers never report canplaythrough on a slow link, so don't
+        // wait on it forever.
+        const fallback = setTimeout(start, 6000);
+        video.addEventListener('playing', () => {
+          clearTimeout(fallback);
+          clearLoading();
+        }, { once: true });
+
+        players.push(video);
+        if (watcher) watcher.observe(video);
+        // Two clips playing over each other helps nobody.
+        video.addEventListener('play', () => pauseAll(video));
+
         video.focus();
-        video.play().catch(clearLoading);   // blocked autoplay — controls are right there
       });
     });
   })();
